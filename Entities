@@ -1,0 +1,492 @@
+foreach ($i in $EasyEntities)
+        {
+            $EasyEntityMaxNum = $filenum
+            if ($i -eq "JobSubmissionHistory")
+            {
+                Write-Output "Check here."
+            }
+            # if ($i = "CorporateUser")
+            #         {
+            #             if(((get-date).day/2)%1)
+            #             {
+            #                 write-output "Odd day"
+            #                 $filenum = 1
+            #             }
+            #             else
+            #             {
+            #                 write-output "Even day"
+            #                 $filenum = 2
+            #             }
+            #             $easyentitymaxnum = $filenum
+            #             }
+            $FileList = get-childitem -path $ConsolidationStorage -Filter "$($i)*.json"
+            $finalfilelist = @()
+            write-output "Starting Splitter."
+            if ($ee -notlike "*history*")
+            {
+                $finalfilelist = $FileList | Where-Object -Property name -notlike "*history*"
+            }
+            else 
+            {
+                $finalfilelist = $FileList    
+            }
+            $easyentityfiles = $finalfilelist.name.replace($i, "")
+            $EasyEntitynumbers = ($easyentityfiles.replace(".json",""))
+            [array]$n = foreach ($number in $EasyEntitynumbers) {
+                try {
+                    [int]::Parse($number)
+                }
+                catch {
+                    
+                }
+            }
+            $EasyEntityMaxNum = ($n | Measure-Object -Maximum).Maximum
+            if ($fullpullreplace -eq $true)
+            {
+                $easyentitymaxnum = 1
+            }
+            else 
+            {
+                $easyentitymaxnum = $filenum    
+            }
+            if ($i -in @())
+            {
+                $fullpull = $true
+            }
+            $Fieldswitch = ""
+            if ($i -in $fieldswitchparam -or $idonlyrun -eq $True)
+            {
+                $Fieldswitch = "id"
+            }
+            else 
+            {
+                $Fieldswitch = "dateLastModified"
+            }
+            AuthGrab
+            if ($EasyEntityMaxNum -gt 0)
+            {
+                $queryout = get-content "C:\$($CompanyDesignator)\Source\$($ee)$($EasyEntityMaxNum).json" | convertfrom-json | Select-Object -excludeproperty "_score"
+            }
+            else 
+            {
+                $QueryOut = @()
+            }
+
+            if (Test-Path "C:\$CompanyDesignator\columns\$($i)columns.txt")
+            {
+
+            }
+            else             
+            {
+                Invoke-WebRequest -URI "https://platcommon.blob.core.windows.net/bullhorncolumns/Columnss.zip" -OutFile "$($CodeStorage)\columns\columnss.zip" -UseBasicParsing
+                Expand-Archive -Path "$($CodeStorage)\columns\columnss.zip" -DestinationPath "$($CodeStorage)\columns\" -Force
+            }
+            $icolumns = get-content "C:\$($CompanyDesignator)\columns\$($i)columns.txt"
+            if ($i -eq "JobOrder")
+            {
+                $icolumns = "id,address,appointments,approvedPlacements,assignedUsers,benefits,billRateCategoryID,bonusPackage,branch,branchCode,businessSectors,categories,certificationGroups,certificationList,certifications,clientBillRate,clientContact,clientCorporation,correlatedCustomDate1,correlatedCustomDate2,correlatedCustomDate3,correlatedCustomFloat1,correlatedCustomFloat2,correlatedCustomFloat3,correlatedCustomInt1,correlatedCustomInt2,correlatedCustomInt3,correlatedCustomText1,correlatedCustomText10,correlatedCustomText2,correlatedCustomText3,correlatedCustomText4,correlatedCustomText5,correlatedCustomText6,correlatedCustomText7,correlatedCustomText8,correlatedCustomText9,correlatedCustomTextBlock1,correlatedCustomTextBlock2,correlatedCustomTextBlock3,costCenter,customDate1,customDate2,customDate3,customFloat1,customFloat2,customFloat3,customInt1,customInt2,customInt3,customObject1s,customText1,customText10,customText11,customText12,customText13,customText14,customText15,customText16,customText17,customText18,customText19,customText2,customText20,customText3,customText4,customText5,customText6,customText7,customText8,customText9,customTextBlock1,customTextBlock2,customTextBlock3,customTextBlock4,customTextBlock5,dateAdded,dateClosed,dateEnd,dateLastExported,dateLastModified,dateLastPublished,degreeList,durationWeeks,educationDegree,employmentType,externalCategoryID,externalID,feeArrangement,fileAttachments,hoursOfOperation,hoursPerWeek,interviews,isClientEditable,isDeleted,isInterviewRequired,isJobcastPublished,isOpen,isPublic,jobBoardList,markUpPercentage,numOpenings,onSite,optionsPackage,owner,payRate,placements,publicDescription,publishedCategory,publishedZip,reasonClosed,reportTo,reportToClientContact,responseUser,salary,salaryUnit,sendouts,taxStatus,tearsheets,timeUnits,title,travelRequirements,type,usersAssigned,webResponses,willRelocate,willRelocateInt,willSponsor,workersCompRate,yearsRequired,skillList,skills,source,specialties,startDate,status,submissions,tasks,taxRate"
+            }
+            try 
+                {
+                    #Triple Pass for troubleshooting
+                    # $CountdownEntityPass = 3
+                    # while ($CountdownEntityPass -gt 0)
+                    # {
+                    #Get our starting place.
+                    Write-Output $i
+                    if ($fullpull)
+                    {
+                        authgrab
+                        #Full 
+                        # $qrestURL = $script:restURL+"query/$($i)?where=id>0&orderBy:desc=id&fields=*&BhRestToken=$Script:BhRestToken"
+                        $qrestURL = $script:restURL+"query/$($i)?where=$($Fieldswitch)>0&orderBy:desc=$($Fieldswitch)&fields=$icolumns&BhRestToken=$Script:BhRestToken"
+                    }
+                    else 
+                    {
+                        authgrab
+                        #Cody or Incremental
+                        # $qrestURL = $script:restURL+"query/$($i)?where=id>0&dateLastModified>$LastMonthUnixMili&orderBy:desc=id&fields=*&BhRestToken=$Script:BhRestToken" 
+                        # $qrestURL = $script:restURL+"query/$($i)?where=id>0&orderBy:desc=id&fields=*&BhRestToken=$Script:BhRestToken" 
+                        $dayofmonth = get-date -Format dd
+                        $easyentitymaxnum = $filenum
+                        $qrestURL = $script:restURL+"query/$($i)?where=$($Fieldswitch)>0&orderBy:desc=$($Fieldswitch)&fields=$icolumns&BhRestToken=$Script:BhRestToken"
+                    }
+                    write-output $qrestURL
+                    $Query = try { Invoke-RestMethod -Uri $qrestURL } catch 
+                    { 
+                        $_.Exception.Response 
+                        Start-Sleep -Seconds 600
+                        authgrab
+                        Invoke-RestMethod -Uri $qrestURL
+                    }
+                    foreach ($l in $datefields)
+                                    {
+                                        $Query.data | ForEach-Object{
+                                            try {
+                                                $_.$l = (get-epochDate $_.$l).tostring()
+                                            }
+                                            catch {
+                                            try{
+                                                    $_.$l = $_.$l
+                                            }
+                                            catch{
+
+                                            }
+
+                                            }
+                                            }
+                                    }
+                    write-host "Max value:" $Query.data.$($Fieldswitch)[0] + "Min value:" ($Query.data.$($Fieldswitch)[0]-$Query.count) + " Total: $($QUeryout.count)"
+                    $QueryOut = @()
+                    [decimal]$imax = $query.data.$($Fieldswitch)[0]-$Query.count
+                    $IDwalker = $imax
+                    # $IDwalker = 8899
+                    $QueryOut += $Query.data | Select-Object -excludeproperty "_score"
+                    if ($iMax -gt 0 -and (get-date -Format HH) -lt 21 -and ($pullall -ne $true) -and ($i -ne "CorporateUser")) 
+                    {
+                        if ($fullpull)
+                        {
+                            $TotalMin = 0
+                        }
+                        else {
+                            if ($Fieldswitch -ne "id")
+                            {
+
+                                $TotalMin = $query.data.$($fieldswitch)[($query.data.$($fieldswitch).count-1)]-154071100 #Todo: Change the 154... number so that it can be configured to calculate a certain number of days back.
+                                
+                                $TotalMin = $query.data.$($fieldswitch)[($query.data.$($fieldswitch).count-1)]-10282663000 #Todo: Change the 154... number so that it can be configured to calculate a certain number of days back.
+
+                            }
+                            else 
+                            {
+                                $TotalMin = ($Query.data.$($Fieldswitch)[0]-400) #Change this to 100 below the max if you want to troubleshoot.
+                            }
+
+                        }
+
+                    }
+                    else
+                    {
+                        if ($Fieldswitch -ne "id")
+                        {
+                            $TotalMin = $query.data.$($fieldswitch)[($query.data.$($fieldswitch).count-1)]-154071100 #Todo: Change the 154... number so that it can be configured to calculate a certain number of days back.
+                            $TotalMin = $query.data.$($fieldswitch)[($query.data.$($fieldswitch).count-1)]-10282663000
+                        }
+                        else 
+                        {
+                            $TotalMin = 0 #Change this to 100 below the max if you want to troubleshoot.
+                        }
+                    }
+                    foreach ($l in $datefields)
+                                    {
+                                        $Query.data | ForEach-Object{
+                                            try {
+                                                $_.$l = (get-epochDate $_.$l).tostring()
+                                            }
+                                            catch {
+                                            try{
+                                                    $_.$l = $_.$l
+                                            }
+                                            catch{
+                        
+                                            }
+                        
+                                            }
+                                            }
+                                            # Write-Output $icontent[0]
+                                            # Write-Output "$i isn't in $f"
+                                    }
+                    
+                    if ([string]::IsNullOrWhiteSpace($Query))
+                    {
+                        Write-Output "Nothing here."
+                    }
+                    else
+                    {
+                        if ($Query.count -gt 0) #We might want to remove this from the initial runs.
+                        {
+                            Write-Verbose $query.data[0].$($fieldswitch)
+                            foreach ($l in $datefields)
+                                    {
+                                        $Query.data | ForEach-Object{
+                                            try {
+                                                $_.$l = (get-epochDate $_.$l).tostring()
+                                            }
+                                            catch {
+                                            try{
+                                                    $_.$l = $_.$l
+                                            }
+                                            catch{
+
+                                            }
+
+                                            }
+                                            }
+                                            # Write-Output $icontent[0]
+                                            # Write-Output "$i isn't in $f"
+                                    }
+                            $QueryOut += $Query.data | Select-Object -excludeproperty "_score"
+                        }
+                    }
+                    #Remove the file if it exists. Uncomment if you need to blank things.
+                    # if (Test-Path "$LocalStorage\$i.json")
+                    # {
+                    #     Remove-Item "$LocalStorage\$i.json"
+                    # }
+                    Write-Output "TotalMin is: $totalmin"
+                    # $QueryOut | ConvertTo-Json -depth 100 | Out-File "$LocalStorage\$i.json"
+                    #Now that we have the first Returned data, we will work downward 15
+                    # $totalmin = 8626
+                    # $IDwalker = 8898
+                    # $query.data.id[0] = 567881
+                        while (($imax -gt $TotalMin) -and (-Not ([string]::IsNullOrWhiteSpace($Query))) -and ($IDWalker -gt 0))
+                        {
+                            if ($QueryOut.count -gt 100000 -and $fullpullreplace -eq $true)
+                            {
+                                $queryout | select-object -property * -ExcludeProperty Description | Select-Object -excludeproperty "_score" | convertto-json -depth 100 | out-file "$localstorage\$($i)$($EasyEntityMaxNum).json"
+                                $EasyEntityMaxNum = $EasyEntityMaxNum - 1
+                                $queryout = @()
+                            }
+                            if ($query.count -gt $chunksize)
+                            {
+                                $queryout | select-object -property * -ExcludeProperty Description | Select-Object -excludeproperty "_score" | convertto-json -depth 100 | out-file "$localstorage\$($i)$($EasyEntityMaxNum).json"
+                                $EasyEntityMaxNum = $EasyEntityMaxNum + 1
+                                $queryout = @()
+                            }
+                            if ($fullpull)
+                            {
+                                #Full
+                                try {
+                                    [decimal]$IDwalker = (($Query.data.$($Fieldswitch)[0]-($Query.count-1)))
+                                }
+                                catch {
+                                    [decimal]$IDwalker = $imax
+                                }
+                                
+                            }
+                            else 
+                            {
+                                try {
+                                    [decimal]$IDwalker = (($query.data.$($Fieldswitch)[14]-1))
+                                }
+                                catch {
+                                    [decimal]$IDwalker = $imax
+                                }
+                                #Incremental and Cody                            
+                            }
+
+
+                            if($IDwalker -lt 0)
+                            {
+                                $IDwalker = 0
+                            }
+
+                            if ($queryout.count -gt $easyentitychunksize)
+                            {
+                                $IDwalker = 0
+                            }
+                            
+                            if ($fullpullreplace -eq $true)
+                            {
+                                #Full pulls
+                                # $qrestURL = $script:restURL+"query/$($i)?where=id<$($IDwalker)&orderBy:desc=id&fields=*&BhRestToken=$Script:BhRestToken"
+                                $qrestURL = $script:restURL+"query/$($i)?where=$($Fieldswitch)<$($IDwalker)&orderBy:desc=$($Fieldswitch)&fields=$icolumns&BhRestToken=$Script:BhRestToken"
+                            }
+                            else 
+                            {
+                                #Cody or Incremental
+                                # $qrestURL = $script:restURL+"query/$($i)?where=id<$($IDwalker)&dateLastModified>$LastMonthUnixMili&orderBy:desc=id&fields=*&BhRestToken=$Script:BhRestToken"
+                                $easyentitymaxnum = $filenum
+                                $qrestURL = $script:restURL+"query/$($i)?where=$($Fieldswitch)<$($IDwalker)&orderBy:desc=$($Fieldswitch)&fields=$icolumns&BhRestToken=$Script:BhRestToken"
+                                # $qrestURL = $script:restURL+"query/$($i)?where=id<$($IDwalker)&orderBy:desc=id&fields=*&BhRestToken=$Script:BhRestToken"
+                            }
+
+                            Write-Output $qrestURL
+                            $Query = try { Invoke-RestMethod -Uri $qrestURL } catch 
+                            { 
+                                $_.Exception.Response 
+                                start-sleep -Seconds 600
+                                AuthGrab
+                                Invoke-RestMethod -Uri $qrestURL
+                            }
+                            #Full
+                            write-host "Max value:" $Query.data.$($Fieldswitch)[0] + "Min value:" ($query.data.$($Fieldswitch)[$query.data.Count-1]) + " Total: $($QUeryout.count)"
+                            #Incremental
+
+
+                            if ([string]::IsNullOrWhiteSpace($Query))
+                            {
+                                Write-Output "Nothing here."
+                            }
+                            else
+                            {
+                                if ($Query.count -gt 0)
+                                {
+                                    $imax = $query.data.$($Fieldswitch)[$query.data.Count-1]
+                                    Write-Verbose $Query.data[0]
+                                    foreach ($l in $datefields)
+                                    {
+                                        $Query.data | ForEach-Object{
+                                            try {
+                                                $_.$l = (get-epochDate $_.$l).tostring()
+                                            }
+                                            catch {
+                                            try{
+                                                    $_.$l = $_.$l
+                                            }
+                                            catch{
+
+                                            }
+
+                                            }
+                                            }
+                                            # Write-Output $icontent[0]
+                                            # Write-Output "$i isn't in $f"
+                                    }
+                                    $QueryOut += $Query.data | Select-Object -excludeproperty "_score"
+                                }
+                            }
+                            if(((Get-Date).AddSeconds(10)) -gt ($TokenExpiry))
+                            {
+                                write-output "We ran out of time on $i."
+                                AuthGrab
+                            }
+                        }
+                    
+                    if ($i -eq "JobOrder")
+                    {
+                        #$missingIDs = @(46467,53290,53517,82122,83636)
+                        while (($Query.data.$($Fieldswitch)[0] -gt $TotalMin) -and (-Not ([string]::IsNullOrWhiteSpace($Query))) -and ($IDWalker -gt 0))
+                        {
+
+                            if ($fullpull)
+                            {
+                                #Full
+                                [decimal]$IDwalker = (($Query.data.$($Fieldswitch)[0]-($Query.count-1)))
+                            }
+                            else 
+                            {
+                                #Incremental and Cody
+                                [decimal]$IDwalker = (($query.data.$($Fieldswitch)[14]-1))
+                            }
+
+
+                            if($IDwalker -lt 0)
+                            {
+                                $IDwalker = 0
+                            }
+
+                            if ($queryout.count -gt $easyentitychunksize)
+                            {
+                                $IDwalker = 0
+                            }
+                            
+                            if ($fullpull)
+                            {
+                                #Full pulls
+                                # $qrestURL = $script:restURL+"query/$($i)?where=id<$($IDwalker)&orderBy:desc=id&fields=*&BhRestToken=$Script:BhRestToken"
+                                $qrestURL = $script:restURL+"query/$($i)?where=$($Fieldswitch)<$($IDwalker)&orderBy:desc=$($Fieldswitch)&fields=$icolumns&BhRestToken=$Script:BhRestToken"
+                            }
+                            else 
+                            {
+                                $qrestURL = $script:restURL+"query/$($i)?where=$($Fieldswitch)<$($IDwalker)&orderBy:desc=$($Fieldswitch)&fields=$icolumns&BhRestToken=$Script:BhRestToken"
+                            }
+
+                            Write-Output $qrestURL
+                            $Query = try { Invoke-RestMethod -Uri $qrestURL } catch 
+                            { 
+                                $_.Exception.Response 
+                                start-sleep -Seconds 600
+                                AuthGrab
+                                Invoke-RestMethod -Uri $qrestURL
+                            }
+                            #Full
+                            write-host "Max value:" $Query.data.$($Fieldswitch)[0] + "Min value:" ($Query.data.$($Fieldswitch)[0]-$Query.count) + " Total: $($QUeryout.count)"
+                            #Incremental
+
+
+                            if ([string]::IsNullOrWhiteSpace($Query))
+                            {
+                                Write-Output "Nothing here."
+                            }
+                            else
+                            {
+                                if ($Query.count -gt 0)
+                                {
+                                    $imax = $query.data.$($Fieldswitch)[$query.data.Count-1]
+                                    Write-Verbose $Query.data[0]
+                                    foreach ($l in $datefields)
+                                    {
+                                        $Query.data | ForEach-Object{
+                                            try {
+                                                $_.$l = (get-epochDate $_.$l).tostring()
+                                            }
+                                            catch {
+                                            try{
+                                                    $_.$l = $_.$l
+                                            }
+                                            catch{
+
+                                            }
+
+                                            }
+                                            }
+                                    }
+                                    $QueryOut += $Query.data | Select-Object -excludeproperty "_score"
+                                }
+                            }
+                            if(((Get-Date).AddSeconds(10)) -gt ($TokenExpiry))
+                            {
+                                write-output "We ran out of time on $i."
+                                AuthGrab
+                            }
+                        }
+                    }
+                    Write-Output "Writing out $i to file."
+                    Write-Output "Writing DatePulled Property."
+                    $QueryOut | Add-Member -Name "DatePulled" -Value $Datestamp -MemberType NoteProperty -Force
+                    if (Test-Path -Path "$localstorage\$i.json")
+                    {
+                        Remove-Item -Path "$localstorage\$i.json"
+                    }
+                    $queryout | select-object -property * -ExcludeProperty Description | Select-Object -excludeproperty "_score" | convertto-json -depth 100 | out-file "$localstorage\$($i)$($EasyEntityMaxNum).json"
+
+                    Start-Sleep -Seconds 3
+
+                # foreach ($f in $shorties) 
+                # {
+                #     if ($f.length -gt 0) 
+                #     {
+                #         TossUp -filename $f.name -container bullhornincremental -folder $LocalStorage
+                #     }
+                #     }
+                    $countdownentitypass = $CountdownEntityPass-1
+                    # # } #Triple pass end for troubleshooting.
+                    if ($i -in $TroubleEntities)
+                    {
+                        move-item -path $locaal
+                    }
+                }   
+                catch
+                { 
+                    Write-Output "Done with $i"
+                    Write-Output "Writing out $i to file."
+                    Write-Output "Writing DatePulled Property."
+                    $QueryOut | Add-Member -Name "DatePulled" -Value $Datestamp -MemberType NoteProperty -Force
+                    if (Test-Path -Path "$localstorage\$i.json")
+                    {
+                        Remove-Item -Path "$localstorage\$i.json"
+                    }
+                    if ($fullpullreplace -eq $true)
+                    {
+                        $easyentitymaxnum = 1
+                    }
+                    $queryout | select-object -property * -ExcludeProperty Description | Select-Object -excludeproperty "_score" | convertto-json -depth 100 | out-file "$localstorage\$($i)$($EasyEntityMaxNum).json"
+                   
+
+                    TossUp -filename "$($i).json" -container bullhornincremental -folder $LocalStorage
+                }
+                Write-Output "Stopping to take a look."
+            # $datefields = Get-Content -Path "C:\code\$($i).jsonfields.txt"
+               
+        }
