@@ -1,0 +1,304 @@
+function AuthGrab
+{
+    # Start-Sleep -Seconds 60
+    remove-item -Path "$($codestorage)\Auth\*.*"
+    Invoke-WebRequest -Uri "https://platcommon.blob.core.windows.net/authcodes/$($CompanyDesignator).json" -OutFile "$($CodeStorage)\auth\$($CompanyDesignator).json"
+    $AuthFile = @()
+    $AuthFile = get-content -Path "$CodeStorage\auth\$($CompanyDesignator).json" | convertfrom-json
+    if ([string]::IsNullOrEmpty($AuthFile.expiration))
+    {
+        $auth_string = "https://auth.bullhornstaffing.com/oauth/authorize?client_id=$ClientID&response_type=code&username=$Username&password=$Password&action=Login"
+        Write-Output $auth_string              
+        try {
+            $request = Invoke-WebRequest -Uri $auth_string -maximumredirection 0 -ErrorAction Ignore -UseBasicParsing
+            Write-Host "Response Status Code: $($request.StatusCode)"
+            Write-Host "Redirection URL: $($request.Headers.Location)"
+            Write-Host "Description: $($request.StatusDescription)"
+        } catch {
+            Write-Host "Error: $($_.Exception.Message)"
+            Write-Host "InnerException: $($_.Exception.InnerException.Message)"
+            Write-Host "StackTrace: $($_.Exception.InnerException.StackTrace)"
+            Write-Host "StackTrace: $($_.Exception.StackTrace)"
+            Write-Host "StatusCode: $($_.Exception.Response.StatusCode.Value__)"
+            Write-Host "StatusDescription: $($_.Exception.Response.StatusDescription)"
+        }
+        $Subject = "$CompanyDesignator password needs to be updated"
+        $Body = "The web response contains the string 'Invalid credentials', which may indicate that $CompanyDesignator password needs to be updated."
+        $content = $request.Content
+        if ($null -ne $content -and $content.Contains("Invalid credentials")) 
+        {
+            Send-Email -SMTPServer "smtp.office365.com" -SMTPPort 587 -SMTPUsername "ryan@ctibi.com" -SMTPPassword "Ol1vi@08*" -From "ryan@ctibi.com" -To "ryan@ctibi.com" -Subject $Subject -Body $Body
+            Write-Warning "Bullhorn authentication failed. Email notification sent."
+            throw "Bullhorn authentication failed."
+        }
+        if ($null -eq $request)
+        {
+            Write-Error "Failed to retrieve response from the Bullhorn authentication request."
+            throw "Bullhorn authentication failed."
+        }
+        if($request.StatusCode -eq '302' -or $request.StatusDescription -eq 'Found' -or $request.Headers.Location)
+        {
+            #Line below for debugging.
+            #$request.Headers.Location
+            $a,$AuthCode,$c,$d = $request.Headers.Location.Split("=&")
+            Write-Output "Code: $AuthCode"
+        }
+        else {
+            Write-Host "StatusCode did not equal 302 so no AuthCode produced"
+        }
+        if($null -eq $AuthCode)
+        {
+            Write-Output "Authcode is blank"
+        }
+        else
+        {
+            Write-Output "Code: $AuthCode"
+        }
+            
+        $grantType = "authorization_code"
+        $requestUri = "https://auth.bullhornstaffing.com/oauth/token"
+        $requestBody = "code=$AuthCode&client_id=$ClientID&client_secret=$ClientSecret&grant_type=$grantType"
+
+        try {
+            $response = Invoke-RestMethod -Method Post -Uri $requestUri -ContentType "application/x-www-form-urlencoded" -Body $requestBody
+            Write-Output "Token request successful. Response: $response"
+            $token = $response.access_token
+
+            $TokenURI = "https://rest.bullhornstaffing.com/rest-services/login"
+            $TokenBody = "version=*&access_token=$token"
+
+            $TokenResponse = Invoke-RestMethod -Method Post -Uri $TokenURI -ContentType "application/x-www-form-urlencoded" -Body $TokenBody -UseBasicParsing OutFile "C:\Hirewell\httpresponse.txt"
+            Write-Output "Token response successful. Response: $TokenResponse"
+            $Script:restURL = $TokenResponse.restUrl
+            $Script:BhRestToken = $TokenResponse.BhRestToken
+            $Lifespan = $response.expires_in
+            Write-Output "BhRestToken Expires in: $Lifespan. Datetime format: $((get-date).AddSeconds($Lifespan))"
+            $Script:TokenExpiry = (get-date).AddSeconds($Lifespan)
+        } catch {
+            Write-Host "Error: $($_.Exception.Message)"
+            Write-Host "InnerException: $($_.Exception.InnerException.Message)"
+            Write-Host "StackTrace: $($_.Exception.InnerException.StackTrace)"
+            Write-Host "StackTrace: $($_.Exception.StackTrace)"
+            Write-Host "StatusCode: $($_.Exception.Response.StatusCode.Value__)"
+            Write-Host "StatusDescription: $($_.Exception.Response.StatusDescription)"
+        }
+
+
+        $AuthFile[0].expiration = $Script:TokenExpiry.ToString()
+        $AuthFile[0].restUrl = $Script:restURL
+        $AuthFile[0].BhToken = $Script:BhRestToken
+        $AuthFile[0].Hostname = $env:COMPUTERNAME
+        $AuthFile | Convertto-Json -Depth 10 | out-file "$CodeStorage\auth\$($CompanyDesignator).json"
+        AzCopy /Dest:https://$($CommonStorageAccount).blob.core.windows.net/authcodes/ /Source:$($codestorage)\Auth /Pattern:$($CompanyDesignator).json /DestSAS:$CommonSAS /s /y /v:$CodeStorage\AuthFileLog.txt
+
+    }
+    elseif ((get-date $AuthFile.expiration) -gt (get-date))
+    {
+        Write-Output "BHToken still in the future."
+        $Script:TokenExpiry = $AuthFile[0].expiration
+        $Script:restURL = $AuthFile[0].restUrl
+        $Script:BhRestToken = $AuthFile[0].BhToken
+        Write-Output $AuthFile
+    }
+    else 
+    {
+        Write-Output "BHToken expired. $($AuthFile.expiration)"
+        if ($AuthFile.Hostname -ne $env:COMPUTERNAME)
+        {
+            Write-Output "Auth isn't normally coming from this computer. Waiting politely for a new auth token."
+            Start-Sleep -Seconds 40
+            $randomsleep = get-random -Maximum 40
+            Write-Output "Sleeping a random amount to determine new master of authentication."
+            Start-Sleep -Seconds $randomsleep
+            Write-Output "Rechecking to see if another computer has dropped in a new token."
+            remove-item -Path "$($codestorage)\Auth\*.*"
+            Invoke-WebRequest -Uri "https://platcommon.blob.core.windows.net/authcodes/$($CompanyDesignator).json" -OutFile "$($CodeStorage)\auth\$($CompanyDesignator).json"
+            $AuthFile = @()
+            $AuthFile = get-content -Path "$CodeStorage\auth\$($CompanyDesignator).json" | convertfrom-json
+            if ((get-date $AuthFile.expiration) -gt (get-date))
+            {
+                Write-Output "BHToken still in the future."
+                $Script:TokenExpiry = $AuthFile[0].expiration
+                $Script:restURL = $AuthFile[0].restUrl
+                $Script:BhRestToken = $AuthFile[0].BhToken
+                Write-Output $AuthFile
+            }
+            else 
+            {
+                Write-Output "Taking control of authentication, grabbing another token."
+                #Call Bullhorn, get Authorization
+                $auth_string = "https://auth.bullhornstaffing.com/oauth/authorize?client_id=$ClientID&response_type=code&username=$Username&password=$Password&action=Login"
+                Write-Output $auth_string              
+                try {
+                    $request = Invoke-WebRequest -Uri $auth_string -maximumredirection 0 -ErrorAction Ignore -UseBasicParsing
+                    Write-Host "Response Status Code: $($request.StatusCode)"
+                    Write-Host "Redirection URL: $($request.Headers.Location)"
+                    Write-Host "Description: $($request.StatusDescription)"
+                } catch {
+                    Write-Host "Error: $($_.Exception.Message)"
+                    Write-Host "InnerException: $($_.Exception.InnerException.Message)"
+                    Write-Host "StackTrace: $($_.Exception.InnerException.StackTrace)"
+                    Write-Host "StackTrace: $($_.Exception.StackTrace)"
+                    Write-Host "StatusCode: $($_.Exception.Response.StatusCode.Value__)"
+                    Write-Host "StatusDescription: $($_.Exception.Response.StatusDescription)"
+                }
+                $Subject = "$CompanyDesignator password needs to be updated"
+                $Body = "The web response contains the string 'Invalid credentials', which may indicate that $CompanyDesignator password needs to be updated."
+                $content = $request.Content
+                if ($null -ne $content -and $content.Contains("Invalid credentials")) 
+                {
+                    Send-Email -SMTPServer "smtp.office365.com" -SMTPPort 587 -SMTPUsername "ryan@ctibi.com" -SMTPPassword "Ol1vi@08*" -From "ryan@ctibi.com" -To "ryan@ctibi.com" -Subject $Subject -Body $Body
+                    Write-Warning "Bullhorn authentication failed. Email notification sent."
+                    throw "Bullhorn authentication failed."
+                }
+                if ($null -eq $request)
+                {
+                    Write-Error "Failed to retrieve response from the Bullhorn authentication request."
+                    throw "Bullhorn authentication failed."
+                }
+                if($request.StatusCode -eq '302' -or $request.StatusDescription -eq 'Found' -or $request.Headers.Location)
+                {
+                    #Line below for debugging.
+                    #$request.Headers.Location
+                    $a,$AuthCode,$c,$d = $request.Headers.Location.Split("=&")
+                    Write-Output "Code: $AuthCode"
+                }
+                else {
+                    Write-Host "StatusCode did not equal 302 so no AuthCode produced"
+                }
+                if($null -eq $AuthCode)
+                {
+                    Write-Output "Authcode is blank"
+                }
+                else
+                {
+                    Write-Output "Code: $AuthCode"
+                }
+                    
+                $grantType = "authorization_code"
+                $requestUri = "https://auth.bullhornstaffing.com/oauth/token"
+                $requestBody = "code=$AuthCode&client_id=$ClientID&client_secret=$ClientSecret&grant_type=$grantType"
+
+                try {
+                    $response = Invoke-RestMethod -Method Post -Uri $requestUri -ContentType "application/x-www-form-urlencoded" -Body $requestBody
+                    Write-Output "Token request successful. Response: $response"
+                    $token = $response.access_token
+
+                    $TokenURI = "https://rest.bullhornstaffing.com/rest-services/login"
+                    $TokenBody = "version=*&access_token=$token"
+
+                    $TokenResponse = Invoke-RestMethod -Method Post -Uri $TokenURI -ContentType "application/x-www-form-urlencoded" -Body $TokenBody
+                    Write-Output "Token response successful. Response: $TokenResponse"
+                    $Script:restURL = $TokenResponse.restUrl
+                    $Script:BhRestToken = $TokenResponse.BhRestToken
+                    $Lifespan = $response.expires_in
+                    Write-Output "BhRestToken Expires in: $Lifespan. Datetime format: $((get-date).AddSeconds($Lifespan))"
+                    $Script:TokenExpiry = (get-date).AddSeconds($Lifespan)
+                } catch {
+                    Write-Host "Error: $($_.Exception.Message)"
+                    Write-Host "InnerException: $($_.Exception.InnerException.Message)"
+                    Write-Host "StackTrace: $($_.Exception.InnerException.StackTrace)"
+                    Write-Host "StackTrace: $($_.Exception.StackTrace)"
+                    Write-Host "StatusCode: $($_.Exception.Response.StatusCode.Value__)"
+                    Write-Host "StatusDescription: $($_.Exception.Response.StatusDescription)"
+                }
+
+
+                $AuthFile[0].expiration = $Script:TokenExpiry.ToString()
+                $AuthFile[0].restUrl = $Script:restURL
+                $AuthFile[0].BhToken = $Script:BhRestToken
+                $AuthFile[0].Hostname = $env:COMPUTERNAME
+                $AuthFile | Convertto-Json -Depth 10 | out-file "$CodeStorage\auth\$($CompanyDesignator).json"
+                AzCopy /Dest:https://$($CommonStorageAccount).blob.core.windows.net/authcodes/ /Source:$($codestorage)\Auth /Pattern:$($CompanyDesignator).json /DestSAS:$CommonSAS /s /y /v:$CodeStorage\AuthFileLog.txt
+            }
+        }
+        else 
+        {
+            Write-Output "Auth is coming from this computer, grabbing another token."
+            #Call Bullhorn, get Authorization
+            $auth_string = "https://auth.bullhornstaffing.com/oauth/authorize?client_id=$ClientID&response_type=code&username=$Username&password=$Password&action=Login"
+            Write-Output $auth_string              
+            try {
+                $request = Invoke-WebRequest -Uri $auth_string -maximumredirection 0 -ErrorAction Ignore -UseBasicParsing
+                Write-Host "Response Status Code: $($request.StatusCode)"
+                Write-Host "Redirection URL: $($request.Headers.Location)"
+                Write-Host "Description: $($request.StatusDescription)"
+            } catch {
+                Write-Host "Error: $($_.Exception.Message)"
+                Write-Host "InnerException: $($_.Exception.InnerException.Message)"
+                Write-Host "StackTrace: $($_.Exception.InnerException.StackTrace)"
+                Write-Host "StackTrace: $($_.Exception.StackTrace)"
+                Write-Host "StatusCode: $($_.Exception.Response.StatusCode.Value__)"
+                Write-Host "StatusDescription: $($_.Exception.Response.StatusDescription)"
+            }
+            $Subject = "$CompanyDesignator password needs to be updated"
+            $Body = "The web response contains the string 'Invalid credentials', which may indicate that $CompanyDesignator password needs to be updated."
+            $content = $request.Content
+            if ($null -ne $content -and $content.Contains("Invalid credentials")) 
+            {
+                Send-Email -SMTPServer "smtp.office365.com" -SMTPPort 587 -SMTPUsername "ryan@ctibi.com" -SMTPPassword "Ol1vi@08*" -From "ryan@ctibi.com" -To "ryan@ctibi.com" -Subject $Subject -Body $Body
+                Write-Warning "Bullhorn authentication failed. Email notification sent."
+                throw "Bullhorn authentication failed."
+            }
+            if ($null -eq $request)
+            {
+                Write-Error "Failed to retrieve response from the Bullhorn authentication request."
+                throw "Bullhorn authentication failed."
+            }
+            if($request.StatusCode -eq '302' -or $request.StatusDescription -eq 'Found' -or $request.Headers.Location)
+            {
+                #Line below for debugging.
+                #$request.Headers.Location
+                $a,$AuthCode,$c,$d = $request.Headers.Location.Split("=&")
+                Write-Output "Code: $AuthCode"
+            }
+            else {
+                Write-Host "StatusCode did not equal 302 so no AuthCode produced"
+            }
+            if($null -eq $AuthCode)
+            {
+                Write-Output "Authcode is blank"
+            }
+            else
+            {
+                Write-Output "Code: $AuthCode"
+            }
+                
+            $grantType = "authorization_code"
+            $requestUri = "https://auth.bullhornstaffing.com/oauth/token"
+            $requestBody = "code=$AuthCode&client_id=$ClientID&client_secret=$ClientSecret&grant_type=$grantType"
+
+            try {
+                $response = Invoke-RestMethod -Method Post -Uri $requestUri -ContentType "application/x-www-form-urlencoded" -Body $requestBody
+                Write-Output "Token request successful. Response: $response"
+                $token = $response.access_token
+
+                $TokenURI = "https://rest.bullhornstaffing.com/rest-services/login"
+                $TokenBody = "version=*&access_token=$token"
+
+                $TokenResponse = Invoke-RestMethod -Method Post -Uri $TokenURI -ContentType "application/x-www-form-urlencoded" -Body $TokenBody
+                Write-Output "Token response successful. Response: $TokenResponse"
+                $Script:restURL = $TokenResponse.restUrl
+                $Script:BhRestToken = $TokenResponse.BhRestToken
+                $Lifespan = $response.expires_in
+                Write-Output "BhRestToken Expires in: $Lifespan. Datetime format: $((get-date).AddSeconds($Lifespan))"
+                $Script:TokenExpiry = (get-date).AddSeconds($Lifespan)
+            } catch {
+                Write-Host "Error: $($_.Exception.Message)"
+                Write-Host "InnerException: $($_.Exception.InnerException.Message)"
+                Write-Host "StackTrace: $($_.Exception.InnerException.StackTrace)"
+                Write-Host "StackTrace: $($_.Exception.StackTrace)"
+                Write-Host "StatusCode: $($_.Exception.Response.StatusCode.Value__)"
+                Write-Host "StatusDescription: $($_.Exception.Response.StatusDescription)"
+            }
+
+
+            $AuthFile[0].expiration = $Script:TokenExpiry.ToString()
+            $AuthFile[0].restUrl = $Script:restURL
+            $AuthFile[0].BhToken = $Script:BhRestToken
+            $AuthFile[0].Hostname = $env:COMPUTERNAME
+            $AuthFile | Convertto-Json -Depth 10 | out-file $CodeStorage\auth\$($CompanyDesignator).json
+            AzCopy /Dest:https://$($CommonStorageAccount).blob.core.windows.net/authcodes/ /Source:$($codestorage)\Auth /Pattern:$($CompanyDesignator).json /DestSAS:$CommonSAS /s /y /v:$CodeStorage\AuthFileLog.txt
+        }
+    }    
+}
