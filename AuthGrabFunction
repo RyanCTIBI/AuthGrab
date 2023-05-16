@@ -81,17 +81,44 @@ function AuthGrab
             Write-Host "StackTrace: $($_.Exception.StackTrace)"
             Write-Host "StatusCode: $($_.Exception.Response.StatusCode.Value__)"
             Write-Host "StatusDescription: $($_.Exception.Response.StatusDescription)"
+        
+            # Additional debugging
+            if ($_.Exception.Response -ne $null) {
+                # Extract the response content for further inspection
+                $responseContent = ""
+                try {
+                    $responseContent = $_.Exception.Response.GetResponseStream()
+                    $reader = New-Object System.IO.StreamReader($responseContent)
+                    $responseContent = $reader.ReadToEnd()
+                } catch {
+                    Write-Host "Failed to retrieve response content: $($_.Exception.Message)"
+                } finally {
+                    if ($reader -ne $null) {
+                        $reader.Dispose()
+                    }
+                    if ($responseContent -ne $null) {
+                        Write-Host "Response Content: $responseContent"
+                    }
+                }
+            }
+            
+            # Debugging for AuthFile
+            Write-Host "AuthFile: $AuthFile"
+            Write-Host "AuthFile Type: $($AuthFile.GetType().FullName)"
+        
+            # Check if AuthFile is null or empty
+            if ($AuthFile -eq $null -or $AuthFile.Length -eq 0) {
+                Write-Host "AuthFile is null or empty. Creating a new instance."
+                $AuthFile = @{}
+            }
+        
+            # Assign the values to AuthFile properties
+            $AuthFile.expiration = $Script:TokenExpiry.ToString()
+            $AuthFile.restUrl = $Script:restURL
+            $AuthFile.BhToken = $Script:BhRestToken
+            $AuthFile.Hostname = $env:COMPUTERNAME
+            $AuthFile | ConvertTo-Json -Depth 10 | Out-File "$CodeStorage\auth\$($CompanyDesignator).json"
         }
-
-
-        $AuthFile[0].expiration = $Script:TokenExpiry.ToString()
-        $AuthFile[0].restUrl = $Script:restURL
-        $AuthFile[0].BhToken = $Script:BhRestToken
-        $AuthFile[0].Hostname = $env:COMPUTERNAME
-        $AuthFile | Convertto-Json -Depth 10 | out-file "$CodeStorage\auth\$($CompanyDesignator).json"
-        AzCopy /Dest:https://$($CommonStorageAccount).blob.core.windows.net/authcodes/ /Source:$($codestorage)\Auth /Pattern:$($CompanyDesignator).json /DestSAS:$CommonSAS /s /y /v:$CodeStorage\AuthFileLog.txt
-
-    }
     elseif ((get-date $AuthFile.expiration) -gt (get-date))
     {
         Write-Output "BHToken still in the future."
@@ -201,16 +228,44 @@ function AuthGrab
                     Write-Host "StackTrace: $($_.Exception.StackTrace)"
                     Write-Host "StatusCode: $($_.Exception.Response.StatusCode.Value__)"
                     Write-Host "StatusDescription: $($_.Exception.Response.StatusDescription)"
+                
+                    # Additional debugging
+                    if ($_.Exception.Response -ne $null) {
+                        # Extract the response content for further inspection
+                        $responseContent = ""
+                        try {
+                            $responseContent = $_.Exception.Response.GetResponseStream()
+                            $reader = New-Object System.IO.StreamReader($responseContent)
+                            $responseContent = $reader.ReadToEnd()
+                        } catch {
+                            Write-Host "Failed to retrieve response content: $($_.Exception.Message)"
+                        } finally {
+                            if ($reader -ne $null) {
+                                $reader.Dispose()
+                            }
+                            if ($responseContent -ne $null) {
+                                Write-Host "Response Content: $responseContent"
+                            }
+                        }
+                    }
+                    
+                    # Debugging for AuthFile
+                    Write-Host "AuthFile: $AuthFile"
+                    Write-Host "AuthFile Type: $($AuthFile.GetType().FullName)"
+                
+                    # Check if AuthFile is null or empty
+                    if ($AuthFile -eq $null -or $AuthFile.Length -eq 0) {
+                        Write-Host "AuthFile is null or empty. Creating a new instance."
+                        $AuthFile = @{}
+                    }
+                
+                    # Assign the values to AuthFile properties
+                    $AuthFile.expiration = $Script:TokenExpiry.ToString()
+                    $AuthFile.restUrl = $Script:restURL
+                    $AuthFile.BhToken = $Script:BhRestToken
+                    $AuthFile.Hostname = $env:COMPUTERNAME
+                    $AuthFile | ConvertTo-Json -Depth 10 | Out-File "$CodeStorage\auth\$($CompanyDesignator).json"
                 }
-
-
-                $AuthFile[0].expiration = $Script:TokenExpiry.ToString()
-                $AuthFile[0].restUrl = $Script:restURL
-                $AuthFile[0].BhToken = $Script:BhRestToken
-                $AuthFile[0].Hostname = $env:COMPUTERNAME
-                $AuthFile | Convertto-Json -Depth 10 | out-file "$CodeStorage\auth\$($CompanyDesignator).json"
-                AzCopy /Dest:https://$($CommonStorageAccount).blob.core.windows.net/authcodes/ /Source:$($codestorage)\Auth /Pattern:$($CompanyDesignator).json /DestSAS:$CommonSAS /s /y /v:$CodeStorage\AuthFileLog.txt
-            }
         }
         else 
         {
@@ -290,15 +345,44 @@ function AuthGrab
                 Write-Host "StackTrace: $($_.Exception.StackTrace)"
                 Write-Host "StatusCode: $($_.Exception.Response.StatusCode.Value__)"
                 Write-Host "StatusDescription: $($_.Exception.Response.StatusDescription)"
+            
+                # Additional debugging
+                if ($_.Exception.Response -ne $null) {
+                    # Extract the response content for further inspection
+                    $responseContent = ""
+                    try {
+                        $responseContent = $_.Exception.Response.GetResponseStream()
+                        $reader = New-Object System.IO.StreamReader($responseContent)
+                        $responseContent = $reader.ReadToEnd()
+                    } catch {
+                        Write-Host "Failed to retrieve response content: $($_.Exception.Message)"
+                    } finally {
+                        if ($reader -ne $null) {
+                            $reader.Dispose()
+                        }
+                        if ($responseContent -ne $null) {
+                            Write-Host "Response Content: $responseContent"
+                        }
+                    }
+                }
+                
+                # Debugging for AuthFile
+                Write-Host "AuthFile: $AuthFile"
+                Write-Host "AuthFile Type: $($AuthFile.GetType().FullName)"
+            
+                # Check if AuthFile is null or empty
+                if ($AuthFile -eq $null -or $AuthFile.Length -eq 0) {
+                    Write-Host "AuthFile is null or empty. Creating a new instance."
+                    $AuthFile = @{}
+                }
+            
+                # Assign the values to AuthFile properties
+                $AuthFile.expiration = $Script:TokenExpiry.ToString()
+                $AuthFile.restUrl = $Script:restURL
+                $AuthFile.BhToken = $Script:BhRestToken
+                $AuthFile.Hostname = $env:COMPUTERNAME
+                $AuthFile | ConvertTo-Json -Depth 10 | Out-File "$CodeStorage\auth\$($CompanyDesignator).json"
             }
-
-
-            $AuthFile[0].expiration = $Script:TokenExpiry.ToString()
-            $AuthFile[0].restUrl = $Script:restURL
-            $AuthFile[0].BhToken = $Script:BhRestToken
-            $AuthFile[0].Hostname = $env:COMPUTERNAME
-            $AuthFile | Convertto-Json -Depth 10 | out-file $CodeStorage\auth\$($CompanyDesignator).json
-            AzCopy /Dest:https://$($CommonStorageAccount).blob.core.windows.net/authcodes/ /Source:$($codestorage)\Auth /Pattern:$($CompanyDesignator).json /DestSAS:$CommonSAS /s /y /v:$CodeStorage\AuthFileLog.txt
-        }
+            
     }    
 }
